@@ -1,0 +1,40 @@
+name: CMake
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+env:
+  BUILD_TYPE: Debug
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: 'ubuntu-latest'
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install conan
+      run: pip3 install conan --upgrade
+    - name: Install / Configure dependencies
+      shell: bash
+      run: |
+          echo "Ubuntu - Fix Conan Path"
+          sudo update-alternatives --install /usr/bin/conan conan /home/runner/.local/bin/conan 10
+          sudo update-alternatives --config conan
+    - name: Configure CMake
+      run: |
+          cmake -S . -B ./build -DCMAKE_BUILD_TYPE:STRING=$BUILD_TYPE -DCMAKE_CXX_COMPILER=/usr/bin/g++-10
+    - name: Build
+      run: cmake --build ./build --config $BUILD_TYPE
+
+    - name: Unix - Test and coverage
+      working-directory: ./build
+      run: |
+          ctest -C $BUILD_TYPE
