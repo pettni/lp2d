@@ -26,8 +26,10 @@
 #ifndef LP2D__LP2D_HPP_
 #define LP2D__LP2D_HPP_
 
+#include <algorithm>
 #include <limits>
 #include <numeric>
+#include <queue>
 #include <ranges>
 #include <vector>
 
@@ -35,11 +37,16 @@ namespace lp2d {
 
 using Scalar = double;
 
+enum class Status { Optimal, PrimaryInfeasible, DualInfeasible };
+
 ////////////////////////////////
 ///// FORWARD DECLARATIONS /////
 ////////////////////////////////
 
 namespace detail {
+
+inline constexpr auto eps = 100 * std::numeric_limits<Scalar>::epsilon();
+inline constexpr auto inf = std::numeric_limits<Scalar>::infinity();
 
 /// @brief Halfplane represented as inequality ax + by <= c
 struct HalfPlane
@@ -48,7 +55,7 @@ struct HalfPlane
   bool active{true};
 };
 
-inline std::pair<Scalar, Scalar> solve_impl(std::vector<HalfPlane> &);
+inline std::tuple<Scalar, Scalar, Status> solve_impl(std::vector<HalfPlane> &);
 
 }  // namespace detail
 
@@ -59,24 +66,67 @@ inline std::pair<Scalar, Scalar> solve_impl(std::vector<HalfPlane> &);
 /**
  * @brief Solve 2D linear program
  *
- *  min  y
- *  s.t. a x + by <= c   for (a, b, c) in hps
+ *  min  cx * x + cy * y
+ *  s.t. ax * x + ay * y <= b   for (ax, ay, b) in hps
  *
- * @param rows triplets (a, b, c) defining rows of the LP
+ * @param cx, cy objective function
+ * @param rows triplets (ax, ay, b) defining rows of the LP
  * @return {xopt, yopt} optimal solution
  *
  * If problem is infeasible yopt = inf
  */
 template<std::ranges::range R>
-std::pair<Scalar, Scalar>
-solve(const R & rows) requires(std::tuple_size_v<std::ranges::range_value_t<R>> == 3)
+std::tuple<Scalar, Scalar, Status> solve(Scalar cx, Scalar cy, const R & rows) requires(
+  std::tuple_size_v<std::ranges::range_value_t<R>> == 3)
 {
+  const Scalar sqnorm = cx * cx + cy * cy;
+
+  if (sqnorm < detail::eps) { return {0, 0, Status::Optimal}; }
+
+  if (std::ranges::empty(rows)) { return {0, 0, Status::DualInfeasible}; }
+
+  // transformation matrix:
+  //  [x; y] = [cP -sP; sP cP] [xt; yt]
+  const Scalar cP = cy / sqnorm;
+  const Scalar sP = -cx / sqnorm;
+
+  // insert rotated halfplanes with unit vector norm 1
   std::vector<detail::HalfPlane> input;
   input.reserve(std::ranges::size(rows));
   for (const auto [a, b, c] : rows) {
-    input.push_back(detail::HalfPlane{.a = a, .b = b, .c = c, .active = true});
+    const double ra = cP * a + sP * b;
+    const double rb = -sP * a + cP * b;
+
+    const double norm = ra * ra + rb * rb;
+
+    if (norm > detail::eps) {
+      input.push_back(detail::HalfPlane{
+        .a      = ra / norm,
+        .b      = rb / norm,
+        .c      = c / norm,
+        .active = true,
+      });
+    }
   }
-  return solve_impl(input);
+
+  // scale factor
+  const auto lambda =
+    std::max(1., std::ranges::max(input | std::views::transform([](const auto & hp) {
+                                    return std::abs(hp.c);
+                                  })));
+  for (auto & hp : input) { hp.c /= lambda; }
+
+  const auto [xt_opt, yt_opt, status] = solve_impl(input);
+
+  // multiplication that returns 0 for 0 * inf (regular multiplication returns nan)
+  const auto mul = [](Scalar a, Scalar b) { return std::abs(a) > detail::eps ? a * b : 0; };
+
+  // return solution in original coordinates
+  return {
+    lambda * (mul(cP, xt_opt) - mul(sP, yt_opt)),
+    lambda * (mul(sP, xt_opt) + mul(cP, yt_opt)),
+    status,
+  };
 }
 
 ////////////////////////////////
@@ -85,9 +135,6 @@ solve(const R & rows) requires(std::tuple_size_v<std::ranges::range_value_t<R>> 
 
 namespace detail
 {
-
-inline constexpr auto eps = 100 * std::numeric_limits<Scalar>::epsilon();
-inline constexpr auto inf = std::numeric_limits<Scalar>::infinity();
 
 // value and derivative
 using ValDer = std::tuple<Scalar, Scalar>;
@@ -158,9 +205,19 @@ const auto hfun = [](const std::ranges::range auto & hps, const Scalar x) -> Val
 /// @brief Find candidate optimal point among halfplanes by considering pairwise intersections.
 std::optional<Scalar> find_candidate(std::vector<HalfPlane> & hps, Scalar a, Scalar b)
 {
-  std::vector<Scalar> pts;
-
   std::optional<typename std::vector<HalfPlane>::iterator> it1_store{};
+
+  // keep track of median using two priority queues
+  std::priority_queue<Scalar> small, large;
+  const auto addnum = [&small, &large](Scalar d) {
+    small.push(d);
+    large.push(-small.top());
+    small.pop();
+    while (small.size() < large.size()) {
+      small.push(-large.top());
+      large.pop();
+    }
+  };
 
   // INTERSECT LOWERS AMONGST THEMSELVES
 
@@ -181,7 +238,7 @@ std::optional<Scalar> find_candidate(std::vector<HalfPlane> & hps, Scalar a, Sca
 
     if (isec.has_value()) {
       if (a + eps < *isec && *isec + eps < b) {
-        pts.push_back(*isec);
+        addnum(*isec);
         it1_store = {};
       } else {                   // intersection outside--one is redundant
         if (a + eps >= *isec) {  // check for redundancy at a
@@ -239,7 +296,7 @@ std::optional<Scalar> find_candidate(std::vector<HalfPlane> & hps, Scalar a, Sca
 
     if (isec.has_value()) {
       if (a + eps < *isec && *isec + eps < b) {
-        pts.push_back(*isec);
+        addnum(*isec);
         it1_store = {};
       } else {                   // intersection outside--one is redundant
         if (a + eps >= *isec) {  // check for redundancy at a
@@ -278,23 +335,19 @@ std::optional<Scalar> find_candidate(std::vector<HalfPlane> & hps, Scalar a, Sca
 
   // IF NO POINTS WERE FOUND AND THERE'S A SINGLE LOWER, INTERSECT IT WITH THE UPPERS
 
-  if (pts.empty() && std::count_if(hps.cbegin(), hps.cend(), active_y_lower) == 1) {
+  if (small.empty() && std::count_if(hps.cbegin(), hps.cend(), active_y_lower) == 1) {
     const auto hp_l =
       *std::find_if(std::ranges::begin(hps), std::ranges::end(hps), active_y_lower);
     for (auto & hp_u : hps | std::views::filter(active_y_upper)) {
       const auto isec = intersection(hp_l, hp_u);
-      if (isec.has_value() && a + eps < *isec && *isec + eps < b) { pts.push_back(*isec); }
+      if (isec.has_value() && a + eps < *isec && *isec + eps < b) { addnum(*isec); }
     }
   }
 
-  if (pts.empty()) { return {}; }
+  if (small.empty()) { return {}; }
 
-  // find median element
-  auto mid = pts.begin();
-  std::advance(mid, pts.size() / 2);
-  std::nth_element(pts.begin(), mid, pts.end());
-
-  return *mid;
+  // return median element
+  return small.top();
 }
 
 /**
@@ -352,7 +405,7 @@ inline uint8_t check(const std::vector<HalfPlane> & hps, const Scalar x)
  *
  * If problem is infeasible y = inf is returned
  */
-inline std::pair<Scalar, Scalar> solve_impl(std::vector<HalfPlane> & hps)
+inline std::tuple<Scalar, Scalar, Status> solve_impl(std::vector<HalfPlane> & hps)
 {
   // halfplanes that define a lower bound on x (independent of y)
   auto hps_x_lower = hps | std::views::filter([](const auto & hp) {
@@ -393,7 +446,7 @@ inline std::pair<Scalar, Scalar> solve_impl(std::vector<HalfPlane> & hps)
 
     switch (check(hps, *x)) {
     case 0:
-      return {*x, std::get<0>(gfun(hps, *x))};
+      return {*x, std::get<0>(gfun(hps, *x)), Status::Optimal};
       break;
     case 1:
       b = *x;
@@ -402,7 +455,7 @@ inline std::pair<Scalar, Scalar> solve_impl(std::vector<HalfPlane> & hps)
       a = *x;
       break;
     case 3:
-      return {0, inf};
+      return {0, inf, Status::PrimaryInfeasible};
       break;
     }
   }
@@ -417,18 +470,18 @@ inline std::pair<Scalar, Scalar> solve_impl(std::vector<HalfPlane> & hps)
   if (ga == ha && gb == hb && std::abs(ga) == inf && std::abs(gb) == inf) {
     // special case where bounds are equal and \pm inf
     if (gfun(hps, 0) <= hfun(hps, 0)) {
-      return {0., -inf};  // feasible
+      return {0., 0., Status::DualInfeasible};
     } else {
-      return {0., inf};  // infeasible
+      return {0., 0., Status::PrimaryInfeasible};
     }
   }
 
   if (ga > ha && gb > hb) {
-    return {0, inf};  // infeasible
+    return {0, 0, Status::PrimaryInfeasible};
   } else if ((ga <= ha && gb > hb) || ga < gb) {
-    return {a, ga};
+    return {a, ga, ga == -inf ? Status::DualInfeasible : Status::Optimal};
   } else {
-    return {b, gb};
+    return {b, gb, gb == -inf ? Status::DualInfeasible : Status::Optimal};
   }
 }
 

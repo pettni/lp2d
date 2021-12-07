@@ -31,7 +31,7 @@
 
 TEST_CASE("Basic")
 {
-  std::vector<std::array<double, 3>> lp{
+  std::vector<std::array<double, 3>> rows{
     {0., -1., 2.},    // y >= -2
     {0., -1., 1.5},   // y >= -1.5
     {-1., -1., 0.},   // y >= -x (*)
@@ -39,204 +39,240 @@ TEST_CASE("Basic")
     {1., -1., 2.},    // y >= x - 2 (*)
   };
 
-  const auto [xopt, yopt] = lp2d::solve(lp);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, rows);
 
+  REQUIRE(xopt == Approx(1).epsilon(1e-9));
   REQUIRE(yopt == Approx(-1).epsilon(1e-9));
+}
+
+TEST_CASE("BasicFlipped")
+{
+  std::vector<std::array<double, 3>> rows{
+    {0., 1., 2.},    // y >= -2
+    {0., 1., 1.5},   // y >= -1.5
+    {-1., 1., 0.},   // y >= -x (*)
+    {-1., 1., 0.2},  // y >= -x - 0.2
+    {1., 1., 2.},    // y >= x - 2 (*)
+  };
+
+  const auto [xopt, yopt, stat] = lp2d::solve(0, -1, rows);
+
+  REQUIRE(xopt == Approx(1).epsilon(1e-9));
+  REQUIRE(yopt == Approx(1).epsilon(1e-9));
+}
+
+TEST_CASE("BasicRotated")
+{
+  std::vector<std::array<double, 3>> rows{
+    {-1., 0., 2.},
+    {-1., 0., 1.5},
+    {-1., -1., 0.},
+    {-1., -1., 0.2},
+    {-1., 1., 2.},
+  };
+
+  const auto [xopt, yopt, stat] = lp2d::solve(1, 0, rows);
+
+  REQUIRE(xopt == Approx(-1).epsilon(1e-9));
+  REQUIRE(yopt == Approx(1).epsilon(1e-9));
 }
 
 TEST_CASE("Empty")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{};
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == -lp2d::detail::inf);
+  std::vector<std::array<double, 3>> hps{};
+  {
+    const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+    REQUIRE(stat == lp2d::Status::DualInfeasible);
+  }
+  {
+    const auto [xopt, yopt, stat] = lp2d::solve(1, 1, hps);
+    REQUIRE(stat == lp2d::Status::DualInfeasible);
+  }
+  {
+    const auto [xopt, yopt, stat] = lp2d::solve(-100, 1, hps);
+    REQUIRE(stat == lp2d::Status::DualInfeasible);
+  }
 }
 
 TEST_CASE("SingleLowerFlat")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{{.a = 0, .b = -1, .c = 2}};
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
+  std::vector<std::array<double, 3>> hps{{0, -1, 2}, {1, 0, 3}, {-1, 0, 3}};
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == Approx(-2).epsilon(1e-9));
 }
 
 TEST_CASE("SingleLowerFlatBounds")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0, .b = -1, .c = 2},
-    {.a = 1, .b = 0, .c = 1},
-    {.a = -1, .b = 0, .c = 1},
+  std::vector<std::array<double, 3>> hps{
+    {0, -1, 2},
+    {1, 0, 1},
+    {-1, 0, 1},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == Approx(-2).epsilon(1e-9));
 }
 
 TEST_CASE("SingleLowerTilted")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{{.a = 0.001, .b = -1, .c = 2}};
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == -lp2d::detail::inf);
+  std::vector<std::array<double, 3>> hps{{0.001, -1, 2}};
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::DualInfeasible);
 }
 
 TEST_CASE("SingleLowerTiltedBounds")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0.001, .b = -1, .c = 2},
-    {.a = 1, .b = 0, .c = 1},
-    {.a = -1, .b = 0, .c = 1},
+  std::vector<std::array<double, 3>> hps{
+    {0.001, -1, 2},
+    {1, 0, 1},
+    {-1, 0, 1},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == Approx(-2.001).epsilon(1e-9));
 }
 
 TEST_CASE("Bounds")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 1, .b = 0, .c = 1},
-    {.a = -1, .b = 0, .c = 1},
+  std::vector<std::array<double, 3>> hps{
+    {1, 0, 1},
+    {-1, 0, 1},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == -lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::DualInfeasible);
 }
 
 TEST_CASE("SingleUpperFlat")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{{.a = 0, .b = 1, .c = 2}};
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == -lp2d::detail::inf);
+  std::vector<std::array<double, 3>> hps{{0, 1, 2}};
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::DualInfeasible);
 }
 
 TEST_CASE("SingleUpperTilted")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{{.a = 0.2, .b = 1, .c = 2}};
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == -lp2d::detail::inf);
+  std::vector<std::array<double, 3>> hps{{0.2, 1, 2}};
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::DualInfeasible);
 }
 
 TEST_CASE("UpperLowerIsect")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = -1, .b = 1, .c = -2},
-    {.a = 1, .b = -4, .c = 9},
+  std::vector<std::array<double, 3>> hps{
+    {-1, 1, -2},
+    {1, -4, 9},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(lp2d::detail::check(hps, xopt) == 0);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == -7. / 3);
 }
 
 TEST_CASE("UpperLowerParInfeas")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = -1, .b = 4, .c = -3},
-    {.a = 1, .b = -4, .c = 2},
+  std::vector<std::array<double, 3>> hps{
+    {-1, 4, -3},
+    {1, -4, 2},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::PrimaryInfeasible);
 }
 
 TEST_CASE("UpperLowerParInfeasBounds")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = -1, .b = 4, .c = -3},
-    {.a = 1, .b = -4, .c = 2},
-    {.a = 1, .b = 0, .c = 1},
-    {.a = -1, .b = 0, .c = 1},
+  std::vector<std::array<double, 3>> hps{
+    {-1, 4, -3},
+    {1, -4, 2},
+    {1, 0, 1},
+    {-1, 0, 1},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::PrimaryInfeasible);
 }
 
 TEST_CASE("UpperLowerParFeas")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = -1, .b = 4, .c = -1},
-    {.a = 1, .b = -4, .c = 2},
+  std::vector<std::array<double, 3>> hps{
+    {-1, 4, -1},
+    {1, -4, 2},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == -lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::DualInfeasible);
 }
 
 TEST_CASE("UpperLowerParFeasBounds")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = -1, .b = 4, .c = -1},
-    {.a = 1, .b = -4, .c = 2},
-    {.a = 1, .b = 0, .c = 1},
-    {.a = -1, .b = 0, .c = 1},
+  std::vector<std::array<double, 3>> hps{
+    {-1, 4, -1},
+    {1, -4, 2},
+    {1, 0, 1},
+    {-1, 0, 1},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == Approx(-0.75).epsilon(1e-9));
 }
 
 TEST_CASE("UpperLowerParInfeasFlat")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0, .b = 4, .c = -3},
-    {.a = 0, .b = -4, .c = 2},
+  std::vector<std::array<double, 3>> hps{
+    {0, 4, -3},
+    {0, -4, 2},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::PrimaryInfeasible);
 }
 
 TEST_CASE("UpperLowerParInfeasFlatBounds")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0, .b = 4, .c = -3},
-    {.a = 0, .b = -4, .c = 2},
-    {.a = 1, .b = 0, .c = 1},
-    {.a = -1, .b = 0, .c = 1},
+  std::vector<std::array<double, 3>> hps{
+    {0, 4, -3},
+    {0, -4, 2},
+    {1, 0, 1},
+    {-1, 0, 1},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::PrimaryInfeasible);
 }
 
 TEST_CASE("UpperLowerParFeasFlat")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0, .b = 4, .c = -1},
-    {.a = 0, .b = -4, .c = 2},
+  std::vector<std::array<double, 3>> hps{
+    {0, 4, -1},
+    {0, -4, 2},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == Approx(-1. / 2).epsilon(1e-9));
 }
 
 TEST_CASE("Diamond")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 1, .b = 1, .c = 1},    {.a = -1, .b = 1, .c = 1},    {.a = 1, .b = -1, .c = 1},
-    {.a = -1, .b = -1, .c = 1},  {.a = 1, .b = 1, .c = 1},     {.a = -1, .b = 1, .c = 1},
-    {.a = 1, .b = -1, .c = 1},   {.a = -1, .b = -1, .c = 1},   {.a = 1, .b = 1, .c = 2},
-    {.a = -1, .b = 1, .c = 2},   {.a = 1, .b = -1, .c = 2},    {.a = -1, .b = -1, .c = 2},
-    {.a = 1, .b = 1., .c = 0.5}, {.a = 1, .b = -1., .c = 1.2}, {.a = 1, .b = 1., .c = 1},
-    {.a = 1, .b = 1., .c = 2},   {.a = 1, .b = -1., .c = 3},   {.a = 1, .b = 1., .c = 3},
-    {.a = 1, .b = -1., .c = 4},  {.a = 1, .b = 1., .c = 4},    {.a = 1, .b = -1., .c = 5},
-    {.a = 1, .b = 1., .c = 5},   {.a = 1, .b = -1., .c = 6},   {.a = 1, .b = 1., .c = 6},
-    {.a = 1, .b = 1., .c = 7},   {.a = 1, .b = -1., .c = 7},
+  std::vector<std::array<double, 3>> hps{
+    {1, 1, 1},   {-1, 1, 1},  {1, -1, 1},  {-1, -1, 1}, {1, 1, 1},   {-1, 1, 1},   {1, -1, 1},
+    {-1, -1, 1}, {1, 1, 2},   {-1, 1, 2},  {1, -1, 2},  {-1, -1, 2}, {1, 1., 0.5}, {1, -1., 1.2},
+    {1, 1., 1},  {1, 1., 2},  {1, -1., 3}, {1, 1., 3},  {1, -1., 4}, {1, 1., 4},   {1, -1., 5},
+    {1, 1., 5},  {1, -1., 6}, {1, 1., 6},  {1, 1., 7},  {1, -1., 7},
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(lp2d::detail::check(hps, xopt) == 0);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
   REQUIRE(yopt == Approx(-1.).epsilon(1e-9));
 }
 
 TEST_CASE("SinglePoint")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0, .b = -1, .c = 1},   // y >= -1
-    {.a = -1, .b = 1, .c = -2},  // y <= -2 + x
-    {.a = 1, .b = 1, .c = 0},    // y <=  -x
+  std::vector<std::array<double, 3>> hps{
+    {0, -1, 1},   // y >= -1
+    {-1, 1, -2},  // y <= -2 + x
+    {1, 1, 0},    // y <=  -x
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(lp2d::detail::check(hps, xopt) == 0);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::Optimal);
   REQUIRE(yopt == Approx(-1).epsilon(1e-9));
 }
 
 TEST_CASE("Infeas")
 {
-  std::vector<lp2d::detail::HalfPlane> hps{
-    {.a = 0, .b = -1, .c = -0.9},  // y >= -0.9
-    {.a = -1, .b = 1, .c = -2},    // y <= -2 + x
-    {.a = 1, .b = 1, .c = 0},      // y <=  -x
+  std::vector<std::array<double, 3>> hps{
+    {0, -1, -0.9},  // y >= -0.9
+    {-1, 1, -2},    // y <= -2 + x
+    {1, 1, 0},      // y <=  -x
   };
-  const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
-  REQUIRE(yopt == lp2d::detail::inf);
+  const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+  REQUIRE(stat == lp2d::Status::PrimaryInfeasible);
 }
 
 TEST_CASE("Random")
@@ -244,26 +280,25 @@ TEST_CASE("Random")
   std::default_random_engine rng(5);
 
   for (auto iter = 0u; iter < 100; ++iter) {
-    std::vector<lp2d::detail::HalfPlane> hps;
+    std::vector<std::array<double, 3>> hps;
 
     std::uniform_real_distribution<double> distr(0, 1);
 
     for (auto i = 0u; i < 25; ++i) {
-      hps.push_back(lp2d::detail::HalfPlane{
-        .a = 2 * (distr(rng) - 0.5),
-        .b = 2 * (distr(rng) - 0.5),
-        .c = distr(rng),
+      hps.push_back(std::array<double, 3>{
+        2 * (distr(rng) - 0.5),
+        2 * (distr(rng) - 0.5),
+        distr(rng),
       });
     }
 
-    const auto hps_copy     = hps;
-    const auto [xopt, yopt] = lp2d::detail::solve_impl(hps);
+    const auto [xopt, yopt, stat] = lp2d::solve(0, 1, hps);
+
+    REQUIRE(stat == lp2d::Status::Optimal);
 
     // check feasible
-    for (const auto hp : hps_copy) {
-      REQUIRE(hp.a * xopt + hp.b * yopt <= Approx(hp.c).epsilon(1e-9));
-      REQUIRE(lp2d::detail::check(hps, xopt) == 0);
-      REQUIRE(lp2d::detail::check(hps_copy, xopt) == 0);
+    for (const auto [ax, ay, b] : hps) {
+      REQUIRE(ax * xopt + ay * yopt <= Approx(b).epsilon(1e-9));
     }
   }
 }

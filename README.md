@@ -2,10 +2,10 @@
 
 * Single C++20 file.
 
-* Solves problems on the form
+* Solves 2D linear optimization problems on the form
 ```
-min   y,
-s.t.  ai x + bi * y <= ci.
+min_{x,y}   cx  * x +  cy * y,
+s.t.        axi * x + ayi * y <= bi.
 ```
 
 * Based on [Megiddo's algorithm](https://doi.org/10.1109/SFCS.1982.24)
@@ -13,13 +13,13 @@ s.t.  ai x + bi * y <= ci.
 ## Example
 
 ```cpp
-std::vector<std::array<double, 3>> lp{
-  {0., -1., 2.},    // y >= -2
-  {0., -1., 1.5},   // y >= -1.5
-  {-1., -1., 0.},   // y >= -x (*)
-  {-1., -1., 0.2},  // y >= -x - 0.2
-  {1., -1., 2.},    // y >= x - 2 (*)
+std::vector<std::array<double, 3>> rows{
+  {0., -1., 2.},    //    - y <= 2
+  {0., -1., 1.5},   //    - y <= 1.5
+  {-1., -1., 0.},   // -x - y <= 0 
+  {-1., -1., 0.2},  // -x - y <= 0.2
+  {1., -1., 2.},    //  x - y <= 2
 };
 
-const auto [xopt, yopt] = lp2d::solve(lp);
+const auto [xopt, yopt] = lp2d::solve(0, 1, rows);
 ```
