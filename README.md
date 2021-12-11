@@ -22,5 +22,5 @@ const std::vector<std::array<double, 3>> rows{
   {1., -1., 2.},    //  x - y <= 2
 };
 
-const auto [xopt, yopt, status] = lp2d::solve(0, 1, rows);
+const auto [xopt, yopt, status] = lp2d::solve(cx, cy, rows);
 ```
