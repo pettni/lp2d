@@ -5,7 +5,7 @@
 * Solves 2D linear optimization problems on the form
 ```
 min_{x,y}   cx  * x +  cy * y,
-s.t.        axi * x + ayi * y <= bi.
+s.t.        axi * x + ayi * y <= bi  ∀i.
 ```
 
 * Based on [Megiddo's algorithm](https://doi.org/10.1109/SFCS.1982.24)
@@ -13,7 +13,8 @@ s.t.        axi * x + ayi * y <= bi.
 ## Example
 
 ```cpp
-std::vector<std::array<double, 3>> rows{
+const cx = 0, cy = 1;
+const std::vector<std::array<double, 3>> rows{
   {0., -1., 2.},    //    - y <= 2
   {0., -1., 1.5},   //    - y <= 1.5
   {-1., -1., 0.},   // -x - y <= 0 
@@ -21,5 +22,5 @@ std::vector<std::array<double, 3>> rows{
   {1., -1., 2.},    //  x - y <= 2
 };
 
-const auto [xopt, yopt] = lp2d::solve(0, 1, rows);
+const auto [xopt, yopt, status] = lp2d::solve(0, 1, rows);
 ```
