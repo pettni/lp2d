@@ -99,7 +99,7 @@ std::tuple<Scalar, Scalar, Status> solve(Scalar cx, Scalar cy, const R & rows) r
 
     const double norm = ra * ra + rb * rb;
 
-    if (norm > detail::eps) {
+    if (norm > detail::eps && c < detail::inf) {
       input.push_back(detail::HalfPlane{
         .a      = ra / norm,
         .b      = rb / norm,
@@ -110,10 +110,9 @@ std::tuple<Scalar, Scalar, Status> solve(Scalar cx, Scalar cy, const R & rows) r
   }
 
   // scale factor
-  const auto lambda =
-    std::max(1., std::ranges::max(input | std::views::transform([](const auto & hp) {
-                                    return std::abs(hp.c);
-                                  })));
+  Scalar lambda{1};
+  for (const auto & hp : input) { lambda = std::max(lambda, std::abs(hp.c)); }
+
   for (auto & hp : input) { hp.c /= lambda; }
 
   const auto [xt_opt, yt_opt, status] = solve_impl(input);
