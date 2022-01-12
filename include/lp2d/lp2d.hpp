@@ -76,7 +76,7 @@ inline std::tuple<Scalar, Scalar, Status> solve_impl(std::vector<HalfPlane> &);
  * If problem is infeasible yopt = inf
  */
 template<std::ranges::range R>
-std::tuple<Scalar, Scalar, Status> solve(Scalar cx, Scalar cy, const R & rows) requires(
+inline std::tuple<Scalar, Scalar, Status> solve(Scalar cx, Scalar cy, const R & rows) requires(
   std::tuple_size_v<std::ranges::range_value_t<R>> == 3)
 {
   const Scalar sqnorm = cx * cx + cy * cy;
@@ -142,11 +142,11 @@ using ValDer = std::tuple<Scalar, Scalar>;
 using ValSubDer = std::tuple<Scalar, Scalar, Scalar>;
 
 // halfplanes that define upper and lower bounds on y (as a function of x)
-constexpr auto active_y_upper = [](const auto & hp) { return hp.active && hp.b > 0; };
-constexpr auto active_y_lower = [](const auto & hp) { return hp.active && hp.b < 0; };
+inline constexpr auto active_y_upper = [](const auto & hp) { return hp.active && hp.b > 0; };
+inline constexpr auto active_y_lower = [](const auto & hp) { return hp.active && hp.b < 0; };
 
 // halfplane as bounds on y
-constexpr auto hp_to_yslope = [](const HalfPlane & hp, Scalar x) -> std::pair<Scalar, Scalar> {
+inline constexpr auto hp_to_yslope = [](const HalfPlane & hp, Scalar x) -> std::pair<Scalar, Scalar> {
   // ax + by <=> c  for  b != 0   <==>   y <=> c/b - (a/b) x
   const Scalar alpha = -hp.a / hp.b;
   const Scalar beta  = hp.c / hp.b;
@@ -160,7 +160,7 @@ constexpr auto hp_to_yslope = [](const HalfPlane & hp, Scalar x) -> std::pair<Sc
 /**
  * @brief Compute intersection between two halfplanes
  */
-const std::optional<Scalar> intersection(const HalfPlane & hp1, const HalfPlane & hp2)
+inline const std::optional<Scalar> intersection(const HalfPlane & hp1, const HalfPlane & hp2)
 {
   const Scalar lhs = hp1.a * hp2.b - hp2.a * hp1.b;
   if (std::abs(lhs) > eps) { return (hp2.b * hp1.c - hp1.b * hp2.c) / lhs; }
@@ -168,7 +168,7 @@ const std::optional<Scalar> intersection(const HalfPlane & hp1, const HalfPlane 
 }
 
 // g(x) = max { ai * x + bi },    and its subderivative
-const auto gfun = [](const std::ranges::range auto & hps, const Scalar x) -> ValSubDer {
+inline const auto gfun = [](const std::ranges::range auto & hps, const Scalar x) -> ValSubDer {
   ValSubDer ret{-inf, 0, 0};
   for (const auto & hp : hps | std::views::filter(active_y_lower)) {
     const auto [yx, dyx] = hp_to_yslope(hp, x);
@@ -185,7 +185,7 @@ const auto gfun = [](const std::ranges::range auto & hps, const Scalar x) -> Val
 };
 
 // h(x) = min { a * x + b },   and its subderivative
-const auto hfun = [](const std::ranges::range auto & hps, const Scalar x) -> ValSubDer {
+inline const auto hfun = [](const std::ranges::range auto & hps, const Scalar x) -> ValSubDer {
   ValSubDer ret{inf, 0, 0};
   for (const auto & hp : hps | std::views::filter(active_y_upper)) {
     const auto [yx, dyx] = hp_to_yslope(hp, x);
@@ -202,7 +202,7 @@ const auto hfun = [](const std::ranges::range auto & hps, const Scalar x) -> Val
 };
 
 /// @brief Find candidate optimal point among halfplanes by considering pairwise intersections.
-std::optional<Scalar> find_candidate(std::vector<HalfPlane> & hps, Scalar a, Scalar b)
+inline std::optional<Scalar> find_candidate(std::vector<HalfPlane> & hps, Scalar a, Scalar b)
 {
   std::optional<typename std::vector<HalfPlane>::iterator> it1_store{};
 
